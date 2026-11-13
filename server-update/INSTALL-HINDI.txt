@@ -1,0 +1,11 @@
+CEDTI Attendance Server Update
+
+1) Backup the current /cedti-attendance/ folder and database.
+2) Upload api/login.php, api/attendance.php, api/history.php to /cedti-attendance/api/.
+3) Upload branch_locations.php to /cedti-attendance/.
+4) Do not overwrite config.php, db.php, admin/, or the database.
+5) API uses the existing db.php and api_tokens table. Keep HTTPS enabled.
+6) Test with one staff account at its assigned branch.
+
+Server validates the staff's assigned branch and rejects attendance beyond 20 metres.
+Lanj coordinates need on-site confirmation before production use.
