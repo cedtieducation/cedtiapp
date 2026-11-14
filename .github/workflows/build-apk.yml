@@ -29,4 +29,4 @@ jobs:
         with:
           name: CEDTI-Staff-Attendance-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: erroror
+          if-no-files-found: error
