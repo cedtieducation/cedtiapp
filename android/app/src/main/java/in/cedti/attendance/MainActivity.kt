@@ -8,7 +8,6 @@ import android.location.Location
 import android.location.LocationManager
 import android.content.Context
 import android.widget.*
-import android.view.View
 import android.graphics.Typeface
 import android.graphics.Color
 import org.json.JSONObject
@@ -26,8 +25,10 @@ class MainActivity : Activity() {
         BuildConfig.BASE_URL.trimEnd('/') + "/"
 
     private val PREFS = "CEDTI_ATTENDANCE"
+
     private var staffCode = ""
     private var staffName = ""
+    private var authToken = ""
 
     private lateinit var mainLayout: LinearLayout
     private lateinit var statusText: TextView
@@ -37,13 +38,13 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        staffCode = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getString("staff_code", "") ?: ""
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
 
-        staffName = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getString("staff_name", "") ?: ""
+        staffCode = prefs.getString("staff_code", "") ?: ""
+        staffName = prefs.getString("staff_name", "") ?: ""
+        authToken = prefs.getString("auth_token", "") ?: ""
 
-        if (staffCode.isNotEmpty()) {
+        if (staffCode.isNotEmpty() && authToken.isNotEmpty()) {
             showDashboard()
         } else {
             showLogin()
@@ -94,8 +95,8 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        params.setMargins(0, 10, 0, 10)
 
+        params.setMargins(0, 10, 0, 10)
         mainLayout.addView(button, params)
     }
 
@@ -103,6 +104,7 @@ class MainActivity : Activity() {
         hint: String,
         password: Boolean = false
     ): EditText {
+
         val input = EditText(this)
         input.hint = hint
         input.textSize = 16f
@@ -116,6 +118,8 @@ class MainActivity : Activity() {
         mainLayout.addView(input)
         return input
     }
+
+    // ---------------- LOGIN SCREEN ----------------
 
     private fun showLogin() {
         setupLayout()
@@ -132,20 +136,106 @@ class MainActivity : Activity() {
         mainLayout.addView(statusText)
 
         addButton("LOGIN") {
+
             val code = loginCode.text.toString().trim()
             val password = loginPassword.text.toString()
 
             if (code.isEmpty() || password.isEmpty()) {
-                statusText.text = "Please enter Staff Code and Password"
+                statusText.text =
+                    "Please enter Staff Code and Password"
             } else {
                 login(code, password)
             }
         }
 
-        addText("CEDTI Institute of Management & Technology", 13f)
+        addText(
+            "CEDTI Institute of Management & Technology",
+            13f
+        )
     }
 
+    // ---------------- LOGIN API ----------------
+
+    private fun login(code: String, password: String) {
+
+        statusText.text = "Connecting to server..."
+
+        thread {
+            try {
+
+                val data = JSONObject()
+                data.put("staff_code", code)
+                data.put("password", password)
+
+                val response = postRequest(
+                    "api/login.php",
+                    data
+                )
+
+                runOnUiThread {
+
+                    if (response.optBoolean("ok")) {
+
+                        val staff = response.optJSONObject("staff")
+                            ?: JSONObject()
+
+                        staffCode = staff.optString(
+                            "staff_code",
+                            code
+                        )
+
+                        staffName = staff.optString(
+                            "name",
+                            "Staff"
+                        )
+
+                        authToken = response.optString(
+                            "token",
+                            ""
+                        )
+
+                        if (authToken.isEmpty()) {
+                            statusText.text =
+                                "Login token missing from server"
+                            return@runOnUiThread
+                        }
+
+                        getSharedPreferences(PREFS, MODE_PRIVATE)
+                            .edit()
+                            .putString("staff_code", staffCode)
+                            .putString("staff_name", staffName)
+                            .putString("auth_token", authToken)
+                            .putString(
+                                "branch",
+                                staff.optString("branch", "")
+                            )
+                            .apply()
+
+                        showDashboard()
+
+                    } else {
+
+                        statusText.text = response.optString(
+                            "error",
+                            "Invalid Staff Code or Password"
+                        )
+                    }
+                }
+
+            } catch (e: Exception) {
+
+                runOnUiThread {
+                    statusText.text =
+                        "Connection Error: ${e.message}"
+                }
+            }
+        }
+    }
+
+    // ---------------- DASHBOARD ----------------
+
     private fun showDashboard() {
+
         setupLayout()
 
         addTitle("CEDTI STAFF ATTENDANCE")
@@ -171,6 +261,7 @@ class MainActivity : Activity() {
         }
 
         addButton("LOGOUT") {
+
             getSharedPreferences(PREFS, MODE_PRIVATE)
                 .edit()
                 .clear()
@@ -178,56 +269,23 @@ class MainActivity : Activity() {
 
             staffCode = ""
             staffName = ""
+            authToken = ""
+
             showLogin()
         }
 
-        addText("CEDTI Institute of Management & Technology", 13f)
+        addText(
+            "CEDTI Institute of Management & Technology",
+            13f
+        )
     }
 
-    private fun login(code: String, password: String) {
-        statusText.text = "Please wait..."
-
-        thread {
-            try {
-                val data = JSONObject()
-                data.put("staff_code", code)
-                data.put("password", password)
-
-                val response = postRequest("api/login.php", data)
-
-                runOnUiThread {
-                    if (response.optBoolean("success")) {
-                        staffCode = code
-                        staffName = response.optString(
-                            "name",
-                            response.optString("staff_name", "Staff")
-                        )
-
-                        getSharedPreferences(PREFS, MODE_PRIVATE)
-                            .edit()
-                            .putString("staff_code", staffCode)
-                            .putString("staff_name", staffName)
-                            .apply()
-
-                        showDashboard()
-                    } else {
-                        statusText.text = response.optString(
-                            "message",
-                            "Login failed"
-                        )
-                    }
-                }
-
-            } catch (e: Exception) {
-                runOnUiThread {
-                    statusText.text = "Error: ${e.message}"
-                }
-            }
-        }
-    }
+    // ---------------- ATTENDANCE ----------------
 
     private fun markAttendance(type: String) {
+
         if (!hasLocationPermission()) {
+
             requestPermissions(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -235,15 +293,20 @@ class MainActivity : Activity() {
                 ),
                 100
             )
-            statusText.text = "Please allow location permission"
+
+            statusText.text =
+                "Please allow location permission"
+
             return
         }
 
         val location = getCurrentLocation()
 
         if (location == null) {
+
             statusText.text =
                 "Location not available. Please enable GPS."
+
             return
         }
 
@@ -251,12 +314,15 @@ class MainActivity : Activity() {
 
         thread {
             try {
+
                 val data = JSONObject()
+
                 data.put("staff_code", staffCode)
                 data.put("type", type)
                 data.put("latitude", location.latitude)
                 data.put("longitude", location.longitude)
                 data.put("accuracy", location.accuracy)
+
                 data.put(
                     "device_time",
                     SimpleDateFormat(
@@ -271,28 +337,38 @@ class MainActivity : Activity() {
                 )
 
                 runOnUiThread {
+
                     statusText.text = response.optString(
                         "message",
-                        if (response.optBoolean("success"))
-                            "Attendance submitted"
-                        else
-                            "Attendance failed"
+                        response.optString(
+                            "error",
+                            if (response.optBoolean("ok"))
+                                "Attendance submitted"
+                            else
+                                "Attendance failed"
+                        )
                     )
                 }
 
             } catch (e: Exception) {
+
                 runOnUiThread {
-                    statusText.text = "Error: ${e.message}"
+                    statusText.text =
+                        "Error: ${e.message}"
                 }
             }
         }
     }
 
+    // ---------------- ATTENDANCE HISTORY ----------------
+
     private fun loadHistory() {
+
         statusText.text = "Loading attendance history..."
 
         thread {
             try {
+
                 val data = JSONObject()
                 data.put("staff_code", staffCode)
 
@@ -302,34 +378,44 @@ class MainActivity : Activity() {
                 )
 
                 runOnUiThread {
+
                     mainLayout.removeAllViews()
 
                     addTitle("ATTENDANCE HISTORY")
+
                     addButton("BACK TO DASHBOARD") {
                         showDashboard()
                     }
 
-                    if (!response.optBoolean("success")) {
+                    if (!response.optBoolean("ok") &&
+                        !response.optBoolean("success")) {
+
                         addText(
                             response.optString(
-                                "message",
-                                "Unable to load history"
+                                "error",
+                                response.optString(
+                                    "message",
+                                    "Unable to load history"
+                                )
                             )
                         )
+
                         return@runOnUiThread
                     }
 
-                    val records = response.optJSONArray("records")
-                        ?: response.optJSONArray("data")
-                        ?: JSONArray()
+                    val records =
+                        response.optJSONArray("records")
+                            ?: response.optJSONArray("data")
+                            ?: JSONArray()
 
                     if (records.length() == 0) {
                         addText("No attendance records found.")
                     }
 
                     for (i in 0 until records.length()) {
-                        val item = records.optJSONObject(i)
-                            ?: continue
+
+                        val item =
+                            records.optJSONObject(i) ?: continue
 
                         val date = item.optString(
                             "server_time",
@@ -337,36 +423,51 @@ class MainActivity : Activity() {
                         )
 
                         val type = item.optString("type", "")
-                        val gps = item.optString("latitude", "")
+                        val latitude =
+                            item.optString("latitude", "")
+
+                        val longitude =
+                            item.optString("longitude", "")
 
                         addText(
                             "Date: $date\n" +
                             "Attendance: $type\n" +
-                            "Latitude: $gps\n" +
+                            "Latitude: $latitude\n" +
+                            "Longitude: $longitude\n" +
                             "--------------------------"
                         )
                     }
                 }
 
             } catch (e: Exception) {
+
                 runOnUiThread {
-                    statusText.text = "Error: ${e.message}"
+                    statusText.text =
+                        "Error: ${e.message}"
                 }
             }
         }
     }
 
+    // ---------------- LOCATION PERMISSION ----------------
+
     private fun hasLocationPermission(): Boolean {
+
         return checkSelfPermission(
             Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED ||
+
         checkSelfPermission(
             Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    // ---------------- GET LOCATION ----------------
+
     private fun getCurrentLocation(): Location? {
+
         try {
+
             val manager = getSystemService(
                 Context.LOCATION_SERVICE
             ) as LocationManager
@@ -380,13 +481,16 @@ class MainActivity : Activity() {
             )
 
             if (gpsEnabled) {
+
                 val location = manager.getLastKnownLocation(
                     LocationManager.GPS_PROVIDER
                 )
+
                 if (location != null) return location
             }
 
             if (networkEnabled) {
+
                 return manager.getLastKnownLocation(
                     LocationManager.NETWORK_PROVIDER
                 )
@@ -399,13 +503,17 @@ class MainActivity : Activity() {
         return null
     }
 
+    // ---------------- POST API REQUEST ----------------
+
     private fun postRequest(
         endpoint: String,
         data: JSONObject
     ): JSONObject {
 
         val url = URL(baseUrl + endpoint)
-        val connection = url.openConnection() as HttpURLConnection
+
+        val connection =
+            url.openConnection() as HttpURLConnection
 
         connection.requestMethod = "POST"
         connection.connectTimeout = 20000
@@ -422,8 +530,20 @@ class MainActivity : Activity() {
             "application/json"
         )
 
+        // Send login token for authenticated API requests.
+        if (authToken.isNotEmpty() &&
+            endpoint != "api/login.php") {
+
+            connection.setRequestProperty(
+                "Authorization",
+                "Bearer $authToken"
+            )
+        }
+
         connection.outputStream.use {
-            it.write(data.toString().toByteArray(Charsets.UTF_8))
+            it.write(
+                data.toString().toByteArray(Charsets.UTF_8)
+            )
         }
 
         val responseCode = connection.responseCode
@@ -434,20 +554,30 @@ class MainActivity : Activity() {
             connection.errorStream
         }
 
-        val responseText = stream.bufferedReader().use {
+        val responseText = stream?.bufferedReader()?.use {
             it.readText()
-        }
+        } ?: "{}"
 
         connection.disconnect()
 
-        return JSONObject(responseText)
+        return try {
+            JSONObject(responseText)
+        } catch (e: Exception) {
+            JSONObject().put(
+                "error",
+                "Invalid server response: $responseText"
+            )
+        }
     }
+
+    // ---------------- PERMISSION RESULT ----------------
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
+
         super.onRequestPermissionsResult(
             requestCode,
             permissions,
@@ -455,14 +585,18 @@ class MainActivity : Activity() {
         )
 
         if (requestCode == 100) {
+
             if (grantResults.isNotEmpty() &&
                 grantResults.any {
                     it == PackageManager.PERMISSION_GRANTED
                 }
             ) {
+
                 statusText.text =
                     "Location permission granted. Please mark attendance again."
+
             } else {
+
                 statusText.text =
                     "Location permission denied."
             }
