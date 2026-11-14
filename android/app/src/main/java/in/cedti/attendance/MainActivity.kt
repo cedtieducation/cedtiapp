@@ -74,7 +74,7 @@ class MainActivity : Activity() {
 
         staffCode = EditText(this).apply {
             hint = "Staff ID / Staff Code"
-            singleLine = true
+            setSingleLine(true)
         }
 
         password = EditText(this).apply {
