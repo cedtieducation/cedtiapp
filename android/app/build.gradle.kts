@@ -30,3 +30,6 @@ android {
         buildConfig = true
     }
 }
+dependencies {
+    implementation("androidx.core:core-ktx:1.15.0")
+}
