@@ -15,7 +15,7 @@ android {
         versionName = "0.1.0"
 
         buildConfigField("String", "BASE_URL", "\"https://cedtilearning.com/cedti-attendance/\"")
-    }
+}
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
