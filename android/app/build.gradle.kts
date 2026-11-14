@@ -1,11 +1,4 @@
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
-
-android {
-    namespace = "in.cedti.attendance"
-    compileSdk = 35
-    defaultConfig {
-        applicationId = "in.cedti.attendance"
-        minSdk = 26plugins {
+plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -21,11 +14,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        buildConfigField(
-            "String",
-            "BASE_URL",
-            "\"https://cedtilearning.com/cedti-attendance/\""
-        )
+        buildConfigField("String", "BASE_URL", "\"https://cedtilearning.com/cedti-attendance/\"")
     }
 
     compileOptions {
@@ -40,11 +29,4 @@ android {
     buildFeatures {
         buildConfig = true
     }
-}
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
-        buildConfigField("String", "BASE_URL", "\"https://cedtilearning.com/cedti-attendance/\"")
-    }
-    buildFeatures { buildConfig = true }
 }
