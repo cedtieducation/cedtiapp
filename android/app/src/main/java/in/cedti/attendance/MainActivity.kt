@@ -80,7 +80,7 @@ class MainActivity : Activity() {
         password = EditText(this).apply {
             hint = "Password"
             inputType = 129
-            singleLine = true
+            setSingleLine(true)
         }
 
         loginButton = Button(this).apply {
