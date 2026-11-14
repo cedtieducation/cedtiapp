@@ -1,11 +1,31 @@
-CEDTI Attendance Server Update
+CEDTI PHOTO ATTENDANCE - SERVER UPDATE
 
-1) Backup the current /cedti-attendance/ folder and database.
-2) Upload api/login.php, api/attendance.php, api/history.php to /cedti-attendance/api/.
-3) Upload branch_locations.php to /cedti-attendance/.
-4) Do not overwrite config.php, db.php, admin/, or the database.
-5) API uses the existing db.php and api_tokens table. Keep HTTPS enabled.
-6) Test with one staff account at its assigned branch.
+BACKUP FIRST:
+1. Download a backup of the complete /cedti-attendance/ folder.
+2. Export a backup of the attendance database.
 
-Server validates the staff's assigned branch and rejects attendance beyond 20 metres.
-Lanj coordinates need on-site confirmation before production use.
+DATABASE:
+1. Open phpMyAdmin and select the CEDTI attendance database.
+2. Run the SQL in server-update/sql/add-attendance-photo-column.sql once.
+   It adds attendance.photo_path. Do not run it a second time.
+
+UPLOAD:
+1. Upload server-update/api/attendance.php to /cedti-attendance/api/attendance.php.
+2. Upload server-update/api/history.php to /cedti-attendance/api/history.php.
+3. Upload server-update/branch_locations.php to /cedti-attendance/branch_locations.php.
+4. Ensure /cedti-attendance/uploads/attendance/ is writable by PHP.
+5. Do not overwrite db.php, config.php, login.php, or admin files.
+
+GEOFENCE:
+- Chowari is set to 70 metres in this package.
+- Other branch radii remain at 20 metres in this package.
+- Check your live branch_locations.php before replacing it. If your live file contains different branch pins/radii, merge only the required radius change rather than replacing the whole file.
+
+APP:
+1. Push the updated android/ source to GitHub.
+2. Run the Build CEDTI Attendance APK workflow.
+3. Install the new APK on one test phone and test IN and OUT.
+4. Confirm the photo file appears under uploads/attendance/YYYY/MM and attendance.photo_path is populated.
+
+ADMIN PANEL LIMITATION:
+The uploaded source ZIP did not contain admin/ or report.php. Photo saving is implemented in the API, but the existing Admin Panel attendance table cannot be modified from this package alone. Share your current admin/report.php (or the admin folder ZIP) to add the photo column and view link.

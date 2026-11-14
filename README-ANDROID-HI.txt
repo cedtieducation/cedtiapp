@@ -57,3 +57,12 @@ SECURITY
 
 BUILD LIMITATION
 This deliverable is Android Studio source code, not a compiled APK. A compiled APK requires Android SDK and Gradle dependencies, which must be installed on a build computer.
+
+
+PHOTO ATTENDANCE UPDATE (v0.3.0)
+- Mark IN/OUT now opens the phone camera first.
+- The camera image is sent as photo_base64 to api/attendance.php.
+- Server stores the JPEG and saves its relative path in attendance.photo_path.
+- Before deploying, run server-update/sql/add-attendance-photo-column.sql once and follow server-update/INSTALL-HINDI.txt.
+- The camera app is requested to use the front camera, but some camera apps may ignore this hint.
+- The admin folder/report.php was not part of this source archive, so admin photo display still requires that file.

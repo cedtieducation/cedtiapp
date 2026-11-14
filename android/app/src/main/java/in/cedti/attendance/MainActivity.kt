@@ -10,6 +10,9 @@ import android.widget.*
 import android.view.Gravity
 import android.graphics.Typeface
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.content.Intent
+import android.util.Base64
 import androidx.core.app.ActivityCompat
 import org.json.JSONObject
 import org.json.JSONArray
@@ -23,6 +26,7 @@ import java.util.Locale
 class MainActivity : Activity() {
 
     private var token: String? = null
+    private var pendingAttendanceType: String? = null
 
     private lateinit var status: TextView
     private lateinit var staffCode: EditText
@@ -33,6 +37,8 @@ class MainActivity : Activity() {
     private lateinit var historyButton: Button
     private lateinit var historyView: TextView
     private lateinit var form: LinearLayout
+
+    private val CAMERA_REQUEST = 201
 
     private val baseUrl =
         BuildConfig.BASE_URL.trimEnd('/') + "/"
@@ -382,37 +388,86 @@ class MainActivity : Activity() {
         return best
     }
 
+    // Attendance requires a fresh camera photo before the GPS attendance request.
     private fun mark(type: String) {
+        if (token == null) {
+            status.text = "Please login first."
+            return
+        }
 
+        pendingAttendanceType = type
+        try {
+            val cameraIntent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                // Hint to camera apps to use the front camera where supported.
+                putExtra("android.intent.extras.CAMERA_FACING", 1)
+                putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
+                putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+            }
+            // Do not call resolveActivity(): Android 11+ package visibility can
+            // hide camera apps unless queried. Launch the camera intent directly.
+            status.text = "Opening camera... Please take your attendance photo."
+            startActivityForResult(cameraIntent, CAMERA_REQUEST)
+        } catch (e: Exception) {
+            pendingAttendanceType = null
+            status.text = "Could not open camera: ${e.localizedMessage}"
+        }
+    }
+
+    @Deprecated("Deprecated by Android, retained for broad camera-app compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != CAMERA_REQUEST) return
+
+        val type = pendingAttendanceType
+        pendingAttendanceType = null
+
+        if (resultCode != RESULT_OK || data == null) {
+            status.text = "Photo was not captured. Attendance was not submitted."
+            return
+        }
+
+        val photo = data.extras?.get("data") as? Bitmap
+        if (photo == null) {
+            status.text = "Camera did not return a photo. Please try again."
+            return
+        }
+
+        val output = java.io.ByteArrayOutputStream()
+        photo.compress(Bitmap.CompressFormat.JPEG, 78, output)
+        val encodedPhoto = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        if (encodedPhoto.length > 4_000_000) {
+            status.text = "Photo is too large. Please retake the photo."
+            return
+        }
+
+        if (type != null) submitAttendance(type, encodedPhoto)
+    }
+
+    private fun submitAttendance(type: String, photoBase64: String) {
         val currentToken = token ?: run {
             status.text = "Please login first."
             return
         }
 
         val location = getLocation()
-
         if (location == null) {
-            status.text =
-                "Fresh GPS location unavailable. Turn on Location/GPS and try again."
+            status.text = "Fresh GPS location unavailable. Turn on Location/GPS and try again. Photo was not submitted."
             return
         }
 
         if (location.accuracy > 100f) {
-            status.text =
-                "GPS accuracy is weak (${location.accuracy.toInt()} m). Please wait for a better GPS signal."
+            status.text = "GPS accuracy is weak (${location.accuracy.toInt()} m). Please wait for a better GPS signal. Photo was not submitted."
             return
         }
 
         inButton.isEnabled = false
         outButton.isEnabled = false
+        status.text = "Uploading photo and submitting $type attendance..."
 
-        status.text = "Submitting $type attendance..."
-
-        val deviceTime =
-            SimpleDateFormat(
-                "yyyy-MM-dd HH:mm:ss",
-                Locale.US
-            ).format(Date())
+        val deviceTime = SimpleDateFormat(
+            "yyyy-MM-dd HH:mm:ss",
+            Locale.US
+        ).format(Date())
 
         val body = JSONObject()
             .put("type", type)
@@ -420,26 +475,19 @@ class MainActivity : Activity() {
             .put("longitude", location.longitude)
             .put("accuracy", location.accuracy)
             .put("device_time", deviceTime)
+            .put("photo_base64", photoBase64)
 
-        request(
-            "POST",
-            "api/attendance.php",
-            body,
-            currentToken
-        ) { response ->
-
+        request("POST", "api/attendance.php", body, currentToken) { response ->
             inButton.isEnabled = true
             outButton.isEnabled = true
 
             if (response.optBoolean("ok")) {
-
                 status.text =
                     "${response.optString("message", "Attendance recorded")}\n" +
                     "Server time: ${response.optString("server_time")}\n" +
-                    "GPS accuracy: ${location.accuracy.toInt()} m"
-
+                    "GPS accuracy: ${location.accuracy.toInt()} m\n" +
+                    "Photo: uploaded successfully"
             } else {
-
                 status.text =
                     "Attendance failed (HTTP ${response.optInt("_http_code")})\n" +
                     response.optString("error", "Attendance could not be recorded")
