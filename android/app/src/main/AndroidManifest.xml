@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <queries>
@@ -18,8 +19,8 @@
     <application
         android:theme="@style/AppTheme"
         android:label="CEDTI Staff Attendance"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:usesCleartextTraffic="false"
         android:allowBackup="false">
 
@@ -35,4 +36,5 @@
         </activity>
 
     </application>
+
 </manifest>
