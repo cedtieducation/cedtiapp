@@ -18,6 +18,8 @@
     <application
         android:theme="@style/AppTheme"
         android:label="CEDTI Staff Attendance"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="false"
         android:allowBackup="false">
 
