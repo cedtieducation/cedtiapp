@@ -20,7 +20,7 @@
         android:theme="@style/AppTheme"
         android:label="CEDTI Staff Attendance"
         android:icon="@mipmap/ic_launcher"
-android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="false"
         android:allowBackup="false">
 
@@ -34,6 +34,19 @@ android:roundIcon="@mipmap/ic_launcher_round"
             </intent-filter>
 
         </activity>
+
+        <!-- FileProvider for Camera Photo -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+
+        </provider>
 
     </application>
 
