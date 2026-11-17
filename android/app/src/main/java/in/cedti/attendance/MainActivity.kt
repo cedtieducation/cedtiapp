@@ -1,3 +1,4 @@
+
 package `in`.cedti.attendance
 
 import android.Manifest
@@ -10,8 +11,11 @@ import android.widget.*
 import android.view.Gravity
 import android.graphics.Typeface
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.Intent
 import android.net.Uri
+import android.provider.MediaStore
 import android.util.Base64
 import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
@@ -24,6 +28,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.io.File
+import java.io.ByteArrayOutputStream
 
 class MainActivity : Activity() {
 
@@ -176,6 +181,13 @@ class MainActivity : Activity() {
 
         setContentView(root)
 
+        requestLocationPermission()
+    }
+
+    // LOCATION PERMISSION
+
+    private fun requestLocationPermission() {
+
         if (
             ActivityCompat.checkSelfPermission(
                 this,
@@ -276,8 +288,16 @@ class MainActivity : Activity() {
             } catch (e: Exception) {
 
                 runOnUiThread {
-                    status.text =
-                        "Connection error: ${e.localizedMessage ?: "Please try again"}"
+
+                    val error = JSONObject()
+                        .put("ok", false)
+                        .put(
+                            "error",
+                            e.localizedMessage ?: "Connection error"
+                        )
+                        .put("_http_code", 0)
+
+                    done(error)
                 }
 
             } finally {
@@ -318,7 +338,14 @@ class MainActivity : Activity() {
 
             if (response.optBoolean("ok")) {
 
-                token = response.optString("token")
+                val receivedToken = response.optString("token")
+
+                if (receivedToken.isBlank()) {
+                    status.text = "Login failed: Server did not return a token."
+                    return@request
+                }
+
+                token = receivedToken
 
                 val staff =
                     response.optJSONObject("staff") ?: JSONObject()
@@ -399,7 +426,7 @@ class MainActivity : Activity() {
         return best
     }
 
-    // OPEN CAMERA AND CAPTURE FULL PHOTO
+    // OPEN CAMERA
 
     private fun mark(type: String) {
 
@@ -408,9 +435,9 @@ class MainActivity : Activity() {
             return
         }
 
-        try {
+        pendingAttendanceType = type
 
-            pendingAttendanceType = type
+        try {
 
             val file = File.createTempFile(
                 "cedti_attendance_",
@@ -429,27 +456,12 @@ class MainActivity : Activity() {
             photoUri = uri
 
             val cameraIntent = Intent(
-                android.provider.MediaStore.ACTION_IMAGE_CAPTURE
+                MediaStore.ACTION_IMAGE_CAPTURE
             ).apply {
 
                 putExtra(
-                    android.provider.MediaStore.EXTRA_OUTPUT,
+                    MediaStore.EXTRA_OUTPUT,
                     uri
-                )
-
-                putExtra(
-                    "android.intent.extras.CAMERA_FACING",
-                    1
-                )
-
-                putExtra(
-                    "android.intent.extras.LENS_FACING_FRONT",
-                    1
-                )
-
-                putExtra(
-                    "android.intent.extra.USE_FRONT_CAMERA",
-                    true
                 )
 
                 clipData = android.content.ClipData.newUri(
@@ -462,6 +474,25 @@ class MainActivity : Activity() {
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
 
+            val cameraApps = packageManager.queryIntentActivities(
+                cameraIntent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )
+
+            if (cameraApps.isEmpty()) {
+                throw Exception("No camera application found on this device.")
+            }
+
+            for (app in cameraApps) {
+
+                grantUriPermission(
+                    app.activityInfo.packageName,
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+
             status.text =
                 "Opening camera... Please take your attendance photo."
 
@@ -472,15 +503,138 @@ class MainActivity : Activity() {
 
         } catch (e: Exception) {
 
-            pendingAttendanceType = null
+            // If full-size capture cannot start,
+            // try camera thumbnail mode.
 
-            photoFile?.delete()
-            photoFile = null
-            photoUri = null
+            try {
 
-            status.text =
-                "Could not open camera: ${e.localizedMessage ?: "Please check camera app"}"
+                photoFile?.delete()
+                photoFile = null
+                photoUri = null
+
+                val fallbackIntent = Intent(
+                    MediaStore.ACTION_IMAGE_CAPTURE
+                )
+
+                status.text =
+                    "Opening camera in backup mode..."
+
+                startActivityForResult(
+                    fallbackIntent,
+                    CAMERA_REQUEST
+                )
+
+            } catch (fallbackError: Exception) {
+
+                pendingAttendanceType = null
+
+                photoFile?.delete()
+                photoFile = null
+                photoUri = null
+
+                status.text =
+                    "Could not open camera: ${
+                        fallbackError.localizedMessage ?: "Please check camera app"
+                    }"
+            }
         }
+    }
+
+    // DECODE PHOTO FILE
+
+    private fun decodePhotoFile(file: File): Bitmap? {
+
+        if (!file.exists() || file.length() <= 0L) {
+            return null
+        }
+
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+
+        BitmapFactory.decodeFile(
+            file.absolutePath,
+            bounds
+        )
+
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return null
+        }
+
+        var sampleSize = 1
+
+        while (
+            bounds.outWidth / sampleSize > 1600 ||
+            bounds.outHeight / sampleSize > 1600
+        ) {
+            sampleSize *= 2
+        }
+
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+
+        return BitmapFactory.decodeFile(
+            file.absolutePath,
+            options
+        )
+    }
+
+    // COMPRESS PHOTO AND CONVERT TO BASE64
+
+    private fun encodePhoto(bitmap: Bitmap): String {
+
+        var finalBitmap = bitmap
+
+        val maxDimension = 1280
+
+        if (
+            bitmap.width > maxDimension ||
+            bitmap.height > maxDimension
+        ) {
+
+            val scale = minOf(
+                maxDimension.toFloat() / bitmap.width,
+                maxDimension.toFloat() / bitmap.height
+            )
+
+            val newWidth =
+                (bitmap.width * scale).toInt().coerceAtLeast(1)
+
+            val newHeight =
+                (bitmap.height * scale).toInt().coerceAtLeast(1)
+
+            finalBitmap = Bitmap.createScaledBitmap(
+                bitmap,
+                newWidth,
+                newHeight,
+                true
+            )
+        }
+
+        val output = ByteArrayOutputStream()
+
+        finalBitmap.compress(
+            Bitmap.CompressFormat.JPEG,
+            78,
+            output
+        )
+
+        val encoded = Base64.encodeToString(
+            output.toByteArray(),
+            Base64.NO_WRAP
+        )
+
+        output.close()
+
+        if (finalBitmap !== bitmap) {
+            finalBitmap.recycle()
+        }
+
+        bitmap.recycle()
+
+        return encoded
     }
 
     // RECEIVE CAMERA PHOTO
@@ -516,41 +670,35 @@ class MainActivity : Activity() {
             return
         }
 
-        val file = photoFile
-
-        if (
-            file == null ||
-            !file.exists() ||
-            file.length() == 0L
-        ) {
-
-            file?.delete()
-            photoFile = null
-            photoUri = null
-
-            status.text =
-                "Camera did not save the photo. Please try again."
-
-            return
-        }
-
         try {
 
-            // Read complete photo from file
+            // First try full-size photo.
+            // If unavailable, use camera thumbnail.
 
-            val photoBytes = file.readBytes()
+            val bitmap =
+                photoFile?.let { decodePhotoFile(it) }
+                    ?: (data?.extras?.get("data") as? Bitmap)
 
-            // Convert photo to Base64
+            if (bitmap == null) {
 
-            val encodedPhoto = Base64.encodeToString(
-                photoBytes,
-                Base64.NO_WRAP
-            )
+                status.text =
+                    "Camera did not return a valid photo. Please try again."
 
-            file.delete()
+                return
+            }
 
+            status.text = "Processing attendance photo..."
+
+            val encodedPhoto = encodePhoto(bitmap)
+
+            photoFile?.delete()
             photoFile = null
             photoUri = null
+
+            if (encodedPhoto.isBlank()) {
+                status.text = "Photo processing failed. Please try again."
+                return
+            }
 
             if (encodedPhoto.length > 4_000_000) {
 
@@ -575,13 +723,14 @@ class MainActivity : Activity() {
 
         } catch (e: Exception) {
 
-            file.delete()
-
+            photoFile?.delete()
             photoFile = null
             photoUri = null
 
             status.text =
-                "Photo processing failed: ${e.localizedMessage ?: "Please try again"}"
+                "Photo processing failed: ${
+                    e.localizedMessage ?: "Please try again"
+                }"
         }
     }
 
@@ -741,5 +890,13 @@ class MainActivity : Activity() {
             status.text =
                 "Showing latest ${records.length()} records."
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        photoFile?.delete()
+        photoFile = null
+        photoUri = null
     }
 }
