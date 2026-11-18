@@ -53,7 +53,7 @@ $dp = deg2rad((float)$lat - (float)$target['lat']);
 $dl = deg2rad((float)$lng - (float)$target['lng']);
 $a = sin($dp/2)**2 + cos($p1)*cos($p2)*sin($dl/2)**2;
 $distance = $earth * 2 * atan2(sqrt($a), sqrt(max(0,1-$a)));
-$radius = (float)($target['radius_m'] ?? 20);
+$radius = (float)($target['radius_m'] ?? 100);
 if ($distance > $radius) {
     json_out(['ok'=>false,'error'=>'Attendance allowed only within '.$radius.' metres of your '.$branch.' centre. Current distance: '.round($distance,1).' m.'],403);
 }
