@@ -46,6 +46,7 @@ class MainActivity : Activity() {
     private lateinit var form: LinearLayout
 
     private val CAMERA_REQUEST = 201
+    private val CAMERA_PERMISSION_REQUEST = 102
 
     private var photoFile: File? = null
     private var photoUri: Uri? = null
@@ -426,119 +427,93 @@ class MainActivity : Activity() {
         return best
     }
 
-    // OPEN CAMERA
+   private fun mark(type: String) {
 
-    private fun mark(type: String) {
-
-        if (token == null) {
-            status.text = "Please login first."
-            return
-        }
-
-        pendingAttendanceType = type
-
-        try {
-
-            val file = File.createTempFile(
-                "cedti_attendance_",
-                ".jpg",
-                cacheDir
-            )
-
-            photoFile = file
-
-            val uri = FileProvider.getUriForFile(
-                this,
-                "$packageName.fileprovider",
-                file
-            )
-
-            photoUri = uri
-
-            val cameraIntent = Intent(
-                MediaStore.ACTION_IMAGE_CAPTURE
-            ).apply {
-
-                putExtra(
-                    MediaStore.EXTRA_OUTPUT,
-                    uri
-                )
-
-                clipData = android.content.ClipData.newUri(
-                    contentResolver,
-                    "CEDTI Attendance Photo",
-                    uri
-                )
-
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            }
-
-            val cameraApps = packageManager.queryIntentActivities(
-                cameraIntent,
-                PackageManager.MATCH_DEFAULT_ONLY
-            )
-
-            if (cameraApps.isEmpty()) {
-                throw Exception("No camera application found on this device.")
-            }
-
-            for (app in cameraApps) {
-
-                grantUriPermission(
-                    app.activityInfo.packageName,
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            }
-
-            status.text =
-                "Opening camera... Please take your attendance photo."
-
-            startActivityForResult(
-                cameraIntent,
-                CAMERA_REQUEST
-            )
-
-        } catch (e: Exception) {
-
-            // If full-size capture cannot start,
-            // try camera thumbnail mode.
-
-            try {
-
-                photoFile?.delete()
-                photoFile = null
-                photoUri = null
-
-                val fallbackIntent = Intent(
-                    MediaStore.ACTION_IMAGE_CAPTURE
-                )
-
-                status.text =
-                    "Opening camera in backup mode..."
-
-                startActivityForResult(
-                    fallbackIntent,
-                    CAMERA_REQUEST
-                )
-
-            } catch (fallbackError: Exception) {
-
-                pendingAttendanceType = null
-
-                photoFile?.delete()
-                photoFile = null
-                photoUri = null
-
-                status.text =
-                    "Could not open camera: ${
-                        fallbackError.localizedMessage ?: "Please check camera app"
-                    }"
-            }
-        }
+    if (token == null) {
+        status.text = "Please login first."
+        return
     }
+
+    pendingAttendanceType = type
+
+    if (
+        ActivityCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CAMERA
+        ) != PackageManager.PERMISSION_GRANTED
+    ) {
+
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.CAMERA),
+            CAMERA_PERMISSION_REQUEST
+        )
+
+        status.text = "Please allow camera permission."
+
+        return
+    }
+
+    openAttendanceCamera()
+}
+   private fun openAttendanceCamera() {
+
+    try {
+
+        val file = File.createTempFile(
+            "cedti_attendance_",
+            ".jpg",
+            cacheDir
+        )
+
+        photoFile = file
+
+        val uri = FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            file
+        )
+
+        photoUri = uri
+
+        val cameraIntent = Intent(
+            MediaStore.ACTION_IMAGE_CAPTURE
+        )
+
+        cameraIntent.putExtra(
+            MediaStore.EXTRA_OUTPUT,
+            uri
+        )
+
+        cameraIntent.clipData =
+            android.content.ClipData.newUri(
+                contentResolver,
+                "CEDTI Attendance",
+                uri
+            )
+
+        cameraIntent.addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+
+        status.text = "Opening camera..."
+
+        startActivityForResult(
+            cameraIntent,
+            CAMERA_REQUEST
+        )
+
+    } catch (e: Exception) {
+
+        status.text =
+            "Camera Error: ${e.localizedMessage}"
+
+        photoFile?.delete()
+        photoFile = null
+        photoUri = null
+    }
+}
 
     // DECODE PHOTO FILE
 
@@ -891,7 +866,34 @@ class MainActivity : Activity() {
                 "Showing latest ${records.length()} records."
         }
     }
+override fun onRequestPermissionsResult(
+    requestCode: Int,
+    permissions: Array<out String>,
+    grantResults: IntArray
+) {
 
+    super.onRequestPermissionsResult(
+        requestCode,
+        permissions,
+        grantResults
+    )
+
+    if (requestCode == CAMERA_PERMISSION_REQUEST) {
+
+        if (
+            grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+
+            openAttendanceCamera()
+
+        } else {
+
+            status.text =
+                "Camera permission denied. Please allow camera permission in App Settings."
+        }
+    }
+}
     override fun onDestroy() {
         super.onDestroy()
 
